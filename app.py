@@ -1,3 +1,5 @@
+import os
+import gdown
 import streamlit as st
 import tensorflow as tf
 import numpy as np
@@ -7,109 +9,110 @@ from PIL import Image
 # KONFIGURASI HALAMAN
 # ==============================
 st.set_page_config(
-    page_title="Diagnosis Gangguan Mental Gen Z",
+    page_title="Sistem Diagnosis Gangguan Mental",
     page_icon="🧠",
     layout="centered"
 )
 
 # ==============================
-# CUSTOM STYLE
+# STYLE MODERN & KLINIS
 # ==============================
 st.markdown("""
 <style>
-/* Background klinis */
 .stApp {
-    background-color: #f4f8fb;
-    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #f5f7fa, #e4ecf7);
 }
 
-/* Container */
-.block-container {
-    padding-top: 2rem;
-    max-width: 900px;
+.header-card {
+    background: white;
+    padding: 28px;
+    border-radius: 18px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    text-align: center;
+    margin-bottom: 30px;
 }
 
-/* Header bar */
-.header {
-    background: #0d6efd;
-    color: white;
-    padding: 18px;
-    border-radius: 14px;
-    margin-bottom: 24px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+.upload-card {
+    background: white;
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
 }
 
-/* Card medis */
 .card {
-    background: #ffffff;
-    padding: 24px;
-    border-radius: 14px;
-    border-left: 6px solid #0d6efd;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
-    margin-bottom: 20px;
+    background: white;
+    padding: 30px;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+    margin-top: 25px;
 }
 
-/* Judul hasil */
 .result {
     font-size: 26px;
-    font-weight: 700;
-    color: #0d6efd;
+    font-weight: bold;
+    text-align: center;
+    color: #2c3e50;
 }
 
-/* Confidence */
 .confidence {
-    font-size: 18px;
-    color: #495057;
+    font-size: 16px;
+    text-align: center;
+    color: #555;
 }
 
-/* Upload box */
-.css-1cpxqw2 {
-    background-color: #f9fcff;
-    border: 2px dashed #0d6efd;
-    border-radius: 12px;
+.footer {
+    text-align: center;
+    color: #777;
+    font-size: 14px;
+    margin-top: 50px;
 }
 
-/* Button medis */
-.stButton > button {
-    background-color: #0d6efd;
+.stButton>button {
+    width: 100%;
+    background: linear-gradient(90deg, #1f77b4, #4facfe);
     color: white;
-    font-weight: 600;
+    font-size: 16px;
+    padding: 12px;
     border-radius: 10px;
-    padding: 0.6rem 1.4rem;
     border: none;
 }
 
-.stButton > button:hover {
-    background-color: #084298;
+.stButton>button:hover {
+    background: linear-gradient(90deg, #4facfe, #1f77b4);
 }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ==============================
 # HEADER
 # ==============================
 st.markdown("""
-<div class="header">
+<div class="header-card">
     <h2>🏥 Sistem Diagnosis Gangguan Mental</h2>
-    <p>
-    Clinical Decision Support System (CDSS) Berbasis CNN<br>
-    <strong>Rahman Aldiansyah</strong> — Teknik Informatika
-    </p>
+    <h4>Clinical Decision Support System (CDSS) Berbasis CNN</h4>
+    <p><b>Rahman Aldiansyah</b> — Teknik Informatika</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ==============================
-# LOAD MODEL
+# DOWNLOAD & LOAD MODEL
 # ==============================
+MODEL_PATH = "model/best_model.h5"
+GDRIVE_URL = "https://drive.google.com/uc?id=1xLAy2fQF8lGvtuXKGX4P2xnyXdNRiMf9"
+
+if not os.path.exists(MODEL_PATH):
+    os.makedirs("model", exist_ok=True)
+    with st.spinner("📥 Mengunduh model CNN..."):
+        gdown.download(GDRIVE_URL, MODEL_PATH, quiet=False)
+
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model("model/best_model.h5")
+    return tf.keras.models.load_model(MODEL_PATH)
 
 model = load_model()
 
 # ==============================
-# NAMA KELAS (OUTPUT MODEL)
+# NAMA KELAS
 # ==============================
 class_names = [
     "Gangguan Kecemasan (Anxiety Disorder)",
@@ -117,31 +120,46 @@ class_names = [
 ]
 
 # ==============================
+# RESIZE OTOMATIS (HP FRIENDLY)
+# ==============================
+MAX_DIM = 1024
+
+def resize_image(img):
+    w, h = img.size
+    if max(w, h) > MAX_DIM:
+        scale = MAX_DIM / max(w, h)
+        img = img.resize((int(w*scale), int(h*scale)))
+    return img
+
+# ==============================
 # UPLOAD GAMBAR
 # ==============================
+st.markdown("<div class='upload-card'>", unsafe_allow_html=True)
 st.subheader("📤 Upload Gambar untuk Diagnosis")
 uploaded_file = st.file_uploader(
     "Format JPG, JPEG, PNG",
     type=["jpg", "jpeg", "png"]
 )
+st.markdown("</div>", unsafe_allow_html=True)
 
-if uploaded_file is not None:
+# ==============================
+# PROSES PREDIKSI
+# ==============================
+if uploaded_file:
     img = Image.open(uploaded_file).convert("RGB")
-    st.image(img, caption="Gambar Input", width=350)
+    img = resize_image(img)
 
-    # Preprocessing
+    st.image(img, caption="🖼️ Gambar Input", width=350)
+
     img = img.resize((150, 150))
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # ==============================
-    # PREDIKSI
-    # ==============================
     if st.button("🔍 Proses Diagnosis"):
-        with st.spinner("Memproses diagnosis..."):
+        with st.spinner("Menganalisis kondisi mental..."):
             prediction = model.predict(img_array)
 
-        confidence = np.max(prediction) * 100
+        confidence = float(np.max(prediction) * 100)
         result = class_names[np.argmax(prediction)]
 
         st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -154,15 +172,12 @@ if uploaded_file is not None:
         st.progress(int(confidence))
         st.markdown("</div>", unsafe_allow_html=True)
 
-
-
 # ==============================
 # FOOTER
 # ==============================
 st.markdown("""
-<hr>
-<p style='text-align:center; font-size:13px; color:gray;'>
-Aplikasi ini dikembangkan sebagai bagian dari penelitian skripsi<br>
-© 2026 — Rahman Aldiansyah
-</p>
+<div class="footer">
+    Aplikasi ini dikembangkan sebagai bagian dari penelitian skripsi<br>
+    © 2026 — Rahman Aldiansyah
+</div>
 """, unsafe_allow_html=True)
